@@ -880,6 +880,13 @@ public class CoreOptions implements Serializable {
                     .defaultValue(1024)
                     .withDescription("Read batch size for orc and parquet.");
 
+    public static final ConfigOption<Duration> HISTORICAL_PARTITION_THRESHOLD =
+            key("historical-partition.threshold")
+                    .durationType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "Consumer id for recording the offset of consumption in the storage.");
+
     public static final ConfigOption<String> CONSUMER_ID =
             key("consumer-id")
                     .stringType()
@@ -2067,6 +2074,11 @@ public class CoreOptions implements Serializable {
 
     public FileIndexOptions indexColumnsOptions() {
         return new FileIndexOptions(this);
+    }
+
+    @Nullable
+    public Duration historicalPartitionThreshold() {
+        return options.get(HISTORICAL_PARTITION_THRESHOLD);
     }
 
     public long fileIndexInManifestThreshold() {

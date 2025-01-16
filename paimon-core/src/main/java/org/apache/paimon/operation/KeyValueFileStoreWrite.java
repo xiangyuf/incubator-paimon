@@ -62,6 +62,7 @@ import org.apache.paimon.mergetree.compact.MergeTreeCompactManager;
 import org.apache.paimon.mergetree.compact.MergeTreeCompactRewriter;
 import org.apache.paimon.mergetree.compact.UniversalCompaction;
 import org.apache.paimon.options.Options;
+import org.apache.paimon.partition.PartitionValuesTimeExpireStrategy;
 import org.apache.paimon.schema.KeyValueFieldsExtractor;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.TableSchema;
@@ -79,6 +80,8 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -188,6 +191,18 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                     restoreFiles);
         }
 
+        Duration historicalPartitionThreshold = options.historicalPartitionThreshold();
+        boolean isHistoricalPartition = false;
+        if (historicalPartitionThreshold != null) {
+            PartitionValuesTimeExpireStrategy partitionValuesTimeExpireStrategy =
+                    new PartitionValuesTimeExpireStrategy(options, partitionType);
+            LocalDateTime historicalPartitionDate =
+                    LocalDateTime.now().minus(historicalPartitionThreshold);
+
+            isHistoricalPartition =
+                    partitionValuesTimeExpireStrategy.isExpired(historicalPartitionDate, partition);
+        }
+
         KeyValueFileWriterFactory writerFactory =
                 writerFactoryBuilder.build(partition, bucket, options);
         Comparator<InternalRow> keyComparator = keyComparatorSupplier.get();
@@ -199,7 +214,7 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                         options.numSortedRunCompactionTrigger(),
                         options.optimizedCompactionInterval());
         CompactStrategy compactStrategy =
-                options.needLookup()
+                (options.needLookup() && !isHistoricalPartition)
                         ? new ForceUpLevel0Compaction(universalCompaction)
                         : universalCompaction;
         CompactManager compactManager =
@@ -220,7 +235,8 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                 options.commitForceCompact(),
                 options.changelogProducer(),
                 restoreIncrement,
-                UserDefinedSeqComparator.create(valueType, options));
+                UserDefinedSeqComparator.create(valueType, options),
+                isHistoricalPartition);
     }
 
     @VisibleForTesting

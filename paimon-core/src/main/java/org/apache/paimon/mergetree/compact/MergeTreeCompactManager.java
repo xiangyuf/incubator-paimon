@@ -250,4 +250,8 @@ public class MergeTreeCompactManager extends CompactFutureManager {
             MetricUtils.safeCall(metricsReporter::unregister, LOG);
         }
     }
+
+    public CompactStrategy getStrategy() {
+        return strategy;
+    }
 }

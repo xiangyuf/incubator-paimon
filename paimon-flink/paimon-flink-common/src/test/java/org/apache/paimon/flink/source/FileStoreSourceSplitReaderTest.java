@@ -25,6 +25,10 @@ import org.apache.paimon.flink.source.metrics.FileStoreSourceReaderMetrics;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.local.LocalFileIO;
 import org.apache.paimon.io.DataFileMeta;
+import org.apache.paimon.mergetree.MergeTreeWriter;
+import org.apache.paimon.mergetree.compact.ForceUpLevel0Compaction;
+import org.apache.paimon.mergetree.compact.MergeTreeCompactManager;
+import org.apache.paimon.mergetree.compact.UniversalCompaction;
 import org.apache.paimon.schema.Schema;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.table.source.TableRead;
@@ -156,6 +160,44 @@ public class FileStoreSourceSplitReaderTest {
         assertRecords(records, "id1", "id1", 0, null);
 
         reader.close();
+    }
+
+    @Test
+    public void testPrimaryKeyWithDecayingCompaction() throws Exception {
+        TestChangelogDataReadWrite rw = new TestChangelogDataReadWrite(tempDir.toString());
+        MergeTreeWriter kvWriter1 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250111), 0);
+        MergeTreeWriter kvWriter2 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250112), 0);
+        MergeTreeWriter kvWriter3 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250113), 0);
+        MergeTreeWriter kvWriter4 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250114), 0);
+        MergeTreeWriter kvWriter5 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250115), 0);
+        MergeTreeWriter kvWriter6 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250116), 0);
+
+        MergeTreeCompactManager compactManager1 =
+                (MergeTreeCompactManager) kvWriter1.getCompactManager();
+        MergeTreeCompactManager compactManager2 =
+                (MergeTreeCompactManager) kvWriter2.getCompactManager();
+        MergeTreeCompactManager compactManager3 =
+                (MergeTreeCompactManager) kvWriter3.getCompactManager();
+        MergeTreeCompactManager compactManager4 =
+                (MergeTreeCompactManager) kvWriter4.getCompactManager();
+        MergeTreeCompactManager compactManager5 =
+                (MergeTreeCompactManager) kvWriter5.getCompactManager();
+        MergeTreeCompactManager compactManager6 =
+                (MergeTreeCompactManager) kvWriter6.getCompactManager();
+
+        assertThat(kvWriter1.isHistoricalPartition).isTrue();
+        assertThat(kvWriter2.isHistoricalPartition).isTrue();
+        assertThat(kvWriter3.isHistoricalPartition).isTrue();
+        assertThat(kvWriter4.isHistoricalPartition).isFalse();
+        assertThat(kvWriter5.isHistoricalPartition).isFalse();
+        assertThat(kvWriter6.isHistoricalPartition).isFalse();
+
+        assertThat(compactManager1.getStrategy()).isInstanceOf(UniversalCompaction.class);
+        assertThat(compactManager2.getStrategy()).isInstanceOf(UniversalCompaction.class);
+        assertThat(compactManager3.getStrategy()).isInstanceOf(UniversalCompaction.class);
+        assertThat(compactManager4.getStrategy()).isInstanceOf(ForceUpLevel0Compaction.class);
+        assertThat(compactManager5.getStrategy()).isInstanceOf(ForceUpLevel0Compaction.class);
+        assertThat(compactManager6.getStrategy()).isInstanceOf(ForceUpLevel0Compaction.class);
     }
 
     @Test

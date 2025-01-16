@@ -24,6 +24,7 @@ import org.apache.paimon.codegen.RecordEqualiser;
 import org.apache.paimon.data.BinaryRow;
 import org.apache.paimon.data.GenericRow;
 import org.apache.paimon.data.InternalRow;
+import org.apache.paimon.disk.IOManager;
 import org.apache.paimon.format.FileFormat;
 import org.apache.paimon.format.FileFormatDiscover;
 import org.apache.paimon.fs.Path;
@@ -161,36 +162,42 @@ public class TestChangelogDataReadWrite {
     }
 
     public RecordWriter<KeyValue> createMergeTreeWriter(BinaryRow partition, int bucket) {
-        CoreOptions options =
-                new CoreOptions(Collections.singletonMap(CoreOptions.FILE_FORMAT.key(), "avro"));
+        HashMap<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(CoreOptions.FILE_FORMAT.key(), "avro");
+        optionsMap.put(CoreOptions.HISTORICAL_PARTITION_THRESHOLD.key(), "3 d");
+        optionsMap.put(CoreOptions.PARTITION_TIMESTAMP_FORMATTER.key(), "yyyyMMdd");
+        optionsMap.put(CoreOptions.DELETION_VECTORS_ENABLED.key(), "true");
+
+        CoreOptions options = new CoreOptions(optionsMap);
 
         Map<String, FileStorePathFactory> pathFactoryMap = new HashMap<>();
         pathFactoryMap.put("avro", pathFactory);
         SchemaManager schemaManager = new SchemaManager(LocalFileIO.create(), tablePath);
-        RecordWriter<KeyValue> writer =
+        KeyValueFileStoreWrite kvWrite =
                 new KeyValueFileStoreWrite(
-                                LocalFileIO.create(),
-                                schemaManager,
-                                schemaManager.schema(0),
-                                commitUser,
-                                PARTITION_TYPE,
-                                KEY_TYPE,
-                                VALUE_TYPE,
-                                () -> COMPARATOR,
-                                () -> null,
-                                () -> EQUALISER,
-                                DeduplicateMergeFunction.factory(),
-                                pathFactory,
-                                pathFactoryMap,
-                                snapshotManager,
-                                null, // not used, we only create an empty writer
-                                null,
-                                null,
-                                options,
-                                EXTRACTOR,
-                                tablePath.getName())
-                        .createWriterContainer(partition, bucket, true)
-                        .writer;
+                        LocalFileIO.create(),
+                        schemaManager,
+                        schemaManager.schema(0),
+                        commitUser,
+                        PARTITION_TYPE,
+                        KEY_TYPE,
+                        VALUE_TYPE,
+                        () -> COMPARATOR,
+                        () -> null,
+                        () -> EQUALISER,
+                        DeduplicateMergeFunction.factory(),
+                        pathFactory,
+                        pathFactoryMap,
+                        snapshotManager,
+                        null, // not used, we only create an empty writer
+                        null,
+                        null,
+                        options,
+                        EXTRACTOR,
+                        tablePath.getName());
+        kvWrite.withIOManager(IOManager.create(tablePath.toString()));
+        RecordWriter<KeyValue> writer =
+                kvWrite.createWriterContainer(partition, bucket, true).writer;
         ((MemoryOwner) writer)
                 .setMemoryPool(
                         new HeapMemorySegmentPool(options.writeBufferSize(), options.pageSize()));

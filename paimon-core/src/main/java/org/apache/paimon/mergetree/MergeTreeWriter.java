@@ -86,6 +86,8 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
     private WriteBuffer writeBuffer;
     private boolean isInsertOnly;
 
+    public boolean isHistoricalPartition;
+
     public MergeTreeWriter(
             boolean writeBufferSpillable,
             MemorySize maxDiskSize,
@@ -100,7 +102,8 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
             boolean commitForceCompact,
             ChangelogProducer changelogProducer,
             @Nullable CommitIncrement increment,
-            @Nullable FieldsComparator userDefinedSeqComparator) {
+            @Nullable FieldsComparator userDefinedSeqComparator,
+            boolean isHistoricalPartition) {
         this.writeBufferSpillable = writeBufferSpillable;
         this.maxDiskSize = maxDiskSize;
         this.sortMaxFan = sortMaxFan;
@@ -135,6 +138,7 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
             compactChangelog.addAll(increment.compactIncrement().changelogFiles());
             updateCompactDeletionFile(increment.compactDeletionFile());
         }
+        this.isHistoricalPartition = isHistoricalPartition;
     }
 
     private long newSequenceNumber() {
@@ -397,5 +401,9 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
         if (compactDeletionFile != null) {
             compactDeletionFile.clean();
         }
+    }
+
+    public CompactManager getCompactManager() {
+        return compactManager;
     }
 }
