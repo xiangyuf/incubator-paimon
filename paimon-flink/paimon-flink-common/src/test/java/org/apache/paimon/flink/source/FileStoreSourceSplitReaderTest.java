@@ -18,6 +18,7 @@
 
 package org.apache.paimon.flink.source;
 
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.KeyValue;
 import org.apache.paimon.data.GenericRow;
 import org.apache.paimon.flink.source.FileStoreSourceReaderTest.DummyMetricGroup;
@@ -26,9 +27,9 @@ import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.local.LocalFileIO;
 import org.apache.paimon.io.DataFileMeta;
 import org.apache.paimon.mergetree.MergeTreeWriter;
-import org.apache.paimon.mergetree.compact.ForceUpLevel0Compaction;
+import org.apache.paimon.mergetree.compact.CompactStrategy;
 import org.apache.paimon.mergetree.compact.MergeTreeCompactManager;
-import org.apache.paimon.mergetree.compact.UniversalCompaction;
+import org.apache.paimon.mergetree.compact.TimeAwarenessCompaction;
 import org.apache.paimon.schema.Schema;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.table.source.TableRead;
@@ -52,9 +53,12 @@ import org.junit.jupiter.api.io.TempDir;
 
 import javax.annotation.Nullable;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -163,41 +167,34 @@ public class FileStoreSourceSplitReaderTest {
     }
 
     @Test
-    public void testPrimaryKeyWithDecayingCompaction() throws Exception {
+    public void testPrimaryKeyWithTimeAwarenessCompaction() throws Exception {
         TestChangelogDataReadWrite rw = new TestChangelogDataReadWrite(tempDir.toString());
-        MergeTreeWriter kvWriter1 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250111), 0);
-        MergeTreeWriter kvWriter2 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250112), 0);
-        MergeTreeWriter kvWriter3 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250113), 0);
-        MergeTreeWriter kvWriter4 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250114), 0);
-        MergeTreeWriter kvWriter5 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250115), 0);
-        MergeTreeWriter kvWriter6 = (MergeTreeWriter) rw.createMergeTreeWriter(row(20250116), 0);
+        HashMap<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(CoreOptions.FILE_FORMAT.key(), "avro");
+        optionsMap.put(CoreOptions.HISTORICAL_PARTITION_THRESHOLD.key(), "3 d");
+        optionsMap.put(CoreOptions.PARTITION_TIMESTAMP_FORMATTER.key(), "yyyyMMdd");
+        optionsMap.put(CoreOptions.DELETION_VECTORS_ENABLED.key(), "true");
 
-        MergeTreeCompactManager compactManager1 =
-                (MergeTreeCompactManager) kvWriter1.getCompactManager();
-        MergeTreeCompactManager compactManager2 =
-                (MergeTreeCompactManager) kvWriter2.getCompactManager();
-        MergeTreeCompactManager compactManager3 =
-                (MergeTreeCompactManager) kvWriter3.getCompactManager();
-        MergeTreeCompactManager compactManager4 =
-                (MergeTreeCompactManager) kvWriter4.getCompactManager();
-        MergeTreeCompactManager compactManager5 =
-                (MergeTreeCompactManager) kvWriter5.getCompactManager();
-        MergeTreeCompactManager compactManager6 =
-                (MergeTreeCompactManager) kvWriter6.getCompactManager();
+        for (long i = 0L; i < 30L; i++) {
+            LocalDateTime testPartitionDate = LocalDateTime.now().minusDays(i);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+            MergeTreeWriter kvWriter =
+                    (MergeTreeWriter)
+                            rw.createMergeTreeWriterWithOptions(
+                                    row(Integer.parseInt(testPartitionDate.format(formatter))),
+                                    0,
+                                    optionsMap);
+            CompactStrategy compactStrategy =
+                    ((MergeTreeCompactManager) kvWriter.getCompactManager()).getStrategy();
+            assertThat(compactStrategy).isInstanceOf(TimeAwarenessCompaction.class);
 
-        assertThat(kvWriter1.isHistoricalPartition).isTrue();
-        assertThat(kvWriter2.isHistoricalPartition).isTrue();
-        assertThat(kvWriter3.isHistoricalPartition).isTrue();
-        assertThat(kvWriter4.isHistoricalPartition).isFalse();
-        assertThat(kvWriter5.isHistoricalPartition).isFalse();
-        assertThat(kvWriter6.isHistoricalPartition).isFalse();
-
-        assertThat(compactManager1.getStrategy()).isInstanceOf(UniversalCompaction.class);
-        assertThat(compactManager2.getStrategy()).isInstanceOf(UniversalCompaction.class);
-        assertThat(compactManager3.getStrategy()).isInstanceOf(UniversalCompaction.class);
-        assertThat(compactManager4.getStrategy()).isInstanceOf(ForceUpLevel0Compaction.class);
-        assertThat(compactManager5.getStrategy()).isInstanceOf(ForceUpLevel0Compaction.class);
-        assertThat(compactManager6.getStrategy()).isInstanceOf(ForceUpLevel0Compaction.class);
+            TimeAwarenessCompaction compaction = (TimeAwarenessCompaction) compactStrategy;
+            if (i >= 3L) {
+                assertThat(compaction.isHistorical).isTrue();
+            } else {
+                assertThat(compaction.isHistorical).isFalse();
+            }
+        }
     }
 
     @Test

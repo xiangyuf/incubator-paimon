@@ -65,6 +65,10 @@ public class PartitionValuesTimeExpireStrategy extends PartitionExpireStrategy {
         return new PartitionValuesTimePredicate(expireDateTime).test(partition);
     }
 
+    public PartitionTimeExtractor getTimeExtractor() {
+        return timeExtractor;
+    }
+
     /** The expired partition predicate uses the date-format value of the partition. */
     private class PartitionValuesTimePredicate implements PartitionPredicate {
 

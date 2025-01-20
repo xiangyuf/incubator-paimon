@@ -161,13 +161,8 @@ public class TestChangelogDataReadWrite {
         return new ArrayList<>(files);
     }
 
-    public RecordWriter<KeyValue> createMergeTreeWriter(BinaryRow partition, int bucket) {
-        HashMap<String, String> optionsMap = new HashMap<>();
-        optionsMap.put(CoreOptions.FILE_FORMAT.key(), "avro");
-        optionsMap.put(CoreOptions.HISTORICAL_PARTITION_THRESHOLD.key(), "3 d");
-        optionsMap.put(CoreOptions.PARTITION_TIMESTAMP_FORMATTER.key(), "yyyyMMdd");
-        optionsMap.put(CoreOptions.DELETION_VECTORS_ENABLED.key(), "true");
-
+    public RecordWriter<KeyValue> createMergeTreeWriterWithOptions(
+            BinaryRow partition, int bucket, Map<String, String> optionsMap) {
         CoreOptions options = new CoreOptions(optionsMap);
 
         Map<String, FileStorePathFactory> pathFactoryMap = new HashMap<>();
@@ -202,5 +197,12 @@ public class TestChangelogDataReadWrite {
                 .setMemoryPool(
                         new HeapMemorySegmentPool(options.writeBufferSize(), options.pageSize()));
         return writer;
+    }
+
+    public RecordWriter<KeyValue> createMergeTreeWriter(BinaryRow partition, int bucket) {
+        HashMap<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(CoreOptions.FILE_FORMAT.key(), "avro");
+
+        return createMergeTreeWriterWithOptions(partition, bucket, optionsMap);
     }
 }

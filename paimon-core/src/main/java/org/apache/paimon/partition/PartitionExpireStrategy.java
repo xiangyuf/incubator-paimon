@@ -66,4 +66,8 @@ public abstract class PartitionExpireStrategy {
                 return new PartitionValuesTimeExpireStrategy(options, partitionType);
         }
     }
+
+    public List<String> getPartitionKeys() {
+        return partitionKeys;
+    }
 }
