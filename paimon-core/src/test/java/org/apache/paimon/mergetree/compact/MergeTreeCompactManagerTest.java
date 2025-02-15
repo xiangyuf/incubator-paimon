@@ -18,9 +18,6 @@
 
 package org.apache.paimon.mergetree.compact;
 
-import static org.apache.paimon.io.DataFileTestUtils.newFile;
-import static org.assertj.core.api.Assertions.assertThat;
-
 import org.apache.paimon.compact.CompactResult;
 import org.apache.paimon.compact.CompactUnit;
 import org.apache.paimon.data.BinaryRow;
@@ -29,6 +26,7 @@ import org.apache.paimon.io.DataFileMeta;
 import org.apache.paimon.io.DataFileTestUtils;
 import org.apache.paimon.mergetree.Levels;
 import org.apache.paimon.mergetree.SortedRun;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -46,6 +44,9 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+
+import static org.apache.paimon.io.DataFileTestUtils.newFile;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link MergeTreeCompactManager}. */
 public class MergeTreeCompactManagerTest {

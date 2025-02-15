@@ -18,11 +18,6 @@
 
 package org.apache.paimon.operation;
 
-import static org.apache.paimon.CoreOptions.ChangelogProducer.FULL_COMPACTION;
-import static org.apache.paimon.CoreOptions.MergeEngine.DEDUPLICATE;
-import static org.apache.paimon.lookup.LookupStoreFactory.bfGenerator;
-import static org.apache.paimon.mergetree.LookupFile.localFilePrefix;
-
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.CoreOptions.ChangelogProducer;
 import org.apache.paimon.CoreOptions.MergeEngine;
@@ -72,15 +67,19 @@ import org.apache.paimon.partition.PartitionValuesTimeExpireStrategy;
 import org.apache.paimon.schema.KeyValueFieldsExtractor;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.TableSchema;
-import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Cache;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.CommitIncrement;
 import org.apache.paimon.utils.FieldsComparator;
 import org.apache.paimon.utils.FileStorePathFactory;
 import org.apache.paimon.utils.SnapshotManager;
 import org.apache.paimon.utils.UserDefinedSeqComparator;
+
+import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Cache;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -91,7 +90,10 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Supplier;
 
-import javax.annotation.Nullable;
+import static org.apache.paimon.CoreOptions.ChangelogProducer.FULL_COMPACTION;
+import static org.apache.paimon.CoreOptions.MergeEngine.DEDUPLICATE;
+import static org.apache.paimon.lookup.LookupStoreFactory.bfGenerator;
+import static org.apache.paimon.mergetree.LookupFile.localFilePrefix;
 
 /** {@link FileStoreWrite} for {@link KeyValueFileStore}. */
 public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {

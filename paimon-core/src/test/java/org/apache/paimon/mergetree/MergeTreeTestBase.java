@@ -18,11 +18,6 @@
 
 package org.apache.paimon.mergetree;
 
-import static org.apache.paimon.utils.FileStorePathFactoryTest.createNonPartFactory;
-import static org.assertj.core.api.Assertions.assertThat;
-
-import static java.util.Collections.singletonList;
-
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.CoreOptions.ChangelogProducer;
 import org.apache.paimon.CoreOptions.SortEngine;
@@ -67,6 +62,7 @@ import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.CommitIncrement;
 import org.apache.paimon.utils.ExceptionUtils;
 import org.apache.paimon.utils.FileStorePathFactory;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,6 +87,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+
+import static java.util.Collections.singletonList;
+import static org.apache.paimon.utils.FileStorePathFactoryTest.createNonPartFactory;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link MergeTreeReaders} and {@link MergeTreeWriter}. */
 public abstract class MergeTreeTestBase {

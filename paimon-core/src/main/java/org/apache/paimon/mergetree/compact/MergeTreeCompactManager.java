@@ -32,8 +32,11 @@ import org.apache.paimon.mergetree.Levels;
 import org.apache.paimon.operation.metrics.CompactionMetrics;
 import org.apache.paimon.operation.metrics.MetricUtils;
 import org.apache.paimon.utils.Preconditions;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -47,8 +50,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-
-import javax.annotation.Nullable;
 
 /** Compact manager for {@link KeyValueFileStore}. */
 public class MergeTreeCompactManager extends CompactFutureManager {
