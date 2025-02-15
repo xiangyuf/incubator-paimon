@@ -134,8 +134,14 @@ public class MergeTreeCompactManager extends CompactFutureManager {
     @VisibleForTesting
     public boolean shouldTriggerCompactForHistorical() {
         if (levels.level0().size() >= historicalPartitionL0Threshold) {
+            LOG.info(
+                    "Trigger compact for historical partition for L0 file count: {}",
+                    levels.level0().size());
             return true;
         } else if (historicalPartitionTriggerCount.get() + 1 >= historicalPartitionL0Threshold) {
+            LOG.info(
+                    "Trigger compact for historical partition for historicalPartitionTriggerCount count: {}",
+                    historicalPartitionTriggerCount.get() + 1);
             return true;
         } else {
             return false;
