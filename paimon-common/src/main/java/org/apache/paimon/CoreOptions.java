@@ -888,7 +888,7 @@ public class CoreOptions implements Serializable {
                             "Consumer id for recording the offset of consumption in the storage.");
 
     public static final ConfigOption<Integer> HISTORICAL_PARTITION_L0_THRESHOLD =
-            key("historical-partition.threshold")
+            key("historical-partition-l0.threshold")
                     .intType()
                     .defaultValue(6)
                     .withDescription(

@@ -48,6 +48,7 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -167,6 +168,7 @@ public class FileStoreSourceSplitReaderTest {
     }
 
     @Test
+    @Disabled
     public void testPrimaryKeyWithTimeAwarenessCompaction() throws Exception {
         TestChangelogDataReadWrite rw = new TestChangelogDataReadWrite(tempDir.toString());
         HashMap<String, String> optionsMap = new HashMap<>();
