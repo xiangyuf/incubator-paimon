@@ -32,20 +32,23 @@ import org.apache.paimon.mergetree.Levels;
 import org.apache.paimon.operation.metrics.CompactionMetrics;
 import org.apache.paimon.operation.metrics.MetricUtils;
 import org.apache.paimon.utils.Preconditions;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
 import java.io.IOException;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import javax.annotation.Nullable;
 
 /** Compact manager for {@link KeyValueFileStore}. */
 public class MergeTreeCompactManager extends CompactFutureManager {
@@ -64,6 +67,12 @@ public class MergeTreeCompactManager extends CompactFutureManager {
     @Nullable private final DeletionVectorsMaintainer dvMaintainer;
     private final boolean lazyGenDeletionFile;
 
+    @Nullable private final Duration historicalPartitionThreshold;
+    private final int historicalPartitionL0Threshold;
+    @Nullable private final LocalDateTime partitionDate;
+
+    private final AtomicInteger historicalPartitionTriggerCount = new AtomicInteger(0);
+
     public MergeTreeCompactManager(
             ExecutorService executor,
             Levels levels,
@@ -75,6 +84,36 @@ public class MergeTreeCompactManager extends CompactFutureManager {
             @Nullable CompactionMetrics.Reporter metricsReporter,
             @Nullable DeletionVectorsMaintainer dvMaintainer,
             boolean lazyGenDeletionFile) {
+        this(
+                executor,
+                levels,
+                strategy,
+                keyComparator,
+                compactionFileSize,
+                numSortedRunStopTrigger,
+                rewriter,
+                metricsReporter,
+                dvMaintainer,
+                lazyGenDeletionFile,
+                null,
+                0,
+                null);
+    }
+
+    public MergeTreeCompactManager(
+            ExecutorService executor,
+            Levels levels,
+            CompactStrategy strategy,
+            Comparator<InternalRow> keyComparator,
+            long compactionFileSize,
+            int numSortedRunStopTrigger,
+            CompactRewriter rewriter,
+            @Nullable CompactionMetrics.Reporter metricsReporter,
+            @Nullable DeletionVectorsMaintainer dvMaintainer,
+            boolean lazyGenDeletionFile,
+            @Nullable Duration historicalPartitionThreshold,
+            int historicalPartitionL0Threshold,
+            @Nullable LocalDateTime partitionDate) {
         this.executor = executor;
         this.levels = levels;
         this.strategy = strategy;
@@ -85,8 +124,44 @@ public class MergeTreeCompactManager extends CompactFutureManager {
         this.metricsReporter = metricsReporter;
         this.dvMaintainer = dvMaintainer;
         this.lazyGenDeletionFile = lazyGenDeletionFile;
+        this.historicalPartitionThreshold = historicalPartitionThreshold;
+        this.historicalPartitionL0Threshold = historicalPartitionL0Threshold;
+        this.partitionDate = partitionDate;
 
         MetricUtils.safeCall(this::reportLevel0FileCount, LOG);
+    }
+
+    @VisibleForTesting
+    public boolean shouldTriggerCompactForHistorical() {
+        if (levels.level0().size() >= historicalPartitionL0Threshold) {
+            return true;
+        } else if (historicalPartitionTriggerCount.get() + 1 >= historicalPartitionL0Threshold) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public boolean isHistorical() {
+        if (historicalPartitionThreshold == null || partitionDate == null) {
+            return false;
+        }
+
+        // For historicalPartitionDate=20250120, any data insert into partitions<=20250120 will be
+        // considered as late arrived data.
+        LocalDateTime historicalPartitionDate =
+                LocalDateTime.now().minus(historicalPartitionThreshold);
+
+        boolean isHistorical = !partitionDate.isAfter(historicalPartitionDate);
+        DateTimeFormatter formatter = DateTimeFormatter.BASIC_ISO_DATE;
+
+        LOG.info(
+                "Current partition Date: {}, historical Partition Date: {}, historical result: {}.",
+                partitionDate.format(formatter),
+                historicalPartitionDate.format(formatter),
+                isHistorical);
+
+        return isHistorical;
     }
 
     @Override
@@ -133,14 +208,32 @@ public class MergeTreeCompactManager extends CompactFutureManager {
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Trigger normal compaction. Picking from the following runs\n{}", runs);
             }
-            optionalUnit =
-                    strategy.pick(levels.numberOfLevels(), runs)
-                            .filter(unit -> unit.files().size() > 0)
-                            .filter(
-                                    unit ->
-                                            unit.files().size() > 1
-                                                    || unit.files().get(0).level()
-                                                            != unit.outputLevel());
+
+            if (isHistorical()) {
+                if (shouldTriggerCompactForHistorical()) {
+                    historicalPartitionTriggerCount.set(0);
+                    optionalUnit =
+                            strategy.pick(levels.numberOfLevels(), runs)
+                                    .filter(unit -> unit.files().size() > 0)
+                                    .filter(
+                                            unit ->
+                                                    unit.files().size() > 1
+                                                            || unit.files().get(0).level()
+                                                                    != unit.outputLevel());
+                } else {
+                    historicalPartitionTriggerCount.incrementAndGet();
+                    optionalUnit = Optional.empty();
+                }
+            } else {
+                optionalUnit =
+                        strategy.pick(levels.numberOfLevels(), runs)
+                                .filter(unit -> unit.files().size() > 0)
+                                .filter(
+                                        unit ->
+                                                unit.files().size() > 1
+                                                        || unit.files().get(0).level()
+                                                                != unit.outputLevel());
+            }
         }
 
         optionalUnit.ifPresent(

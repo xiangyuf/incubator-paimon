@@ -18,6 +18,12 @@
 
 package org.apache.paimon;
 
+import static org.apache.paimon.options.ConfigOptions.key;
+import static org.apache.paimon.options.MemorySize.VALUE_128_MB;
+import static org.apache.paimon.options.MemorySize.VALUE_256_MB;
+import static org.apache.paimon.options.description.TextElement.text;
+import static org.apache.paimon.utils.Preconditions.checkArgument;
+
 import org.apache.paimon.annotation.Documentation;
 import org.apache.paimon.annotation.Documentation.ExcludeFromDocumentation;
 import org.apache.paimon.annotation.Documentation.Immutable;
@@ -39,8 +45,6 @@ import org.apache.paimon.utils.MathUtils;
 import org.apache.paimon.utils.Pair;
 import org.apache.paimon.utils.StringUtils;
 
-import javax.annotation.Nullable;
-
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.time.Duration;
@@ -57,11 +61,7 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static org.apache.paimon.options.ConfigOptions.key;
-import static org.apache.paimon.options.MemorySize.VALUE_128_MB;
-import static org.apache.paimon.options.MemorySize.VALUE_256_MB;
-import static org.apache.paimon.options.description.TextElement.text;
-import static org.apache.paimon.utils.Preconditions.checkArgument;
+import javax.annotation.Nullable;
 
 /** Core options for paimon. */
 public class CoreOptions implements Serializable {
@@ -884,6 +884,13 @@ public class CoreOptions implements Serializable {
             key("historical-partition.threshold")
                     .durationType()
                     .noDefaultValue()
+                    .withDescription(
+                            "Consumer id for recording the offset of consumption in the storage.");
+
+    public static final ConfigOption<Integer> HISTORICAL_PARTITION_L0_THRESHOLD =
+            key("historical-partition.threshold")
+                    .intType()
+                    .defaultValue(6)
                     .withDescription(
                             "Consumer id for recording the offset of consumption in the storage.");
 
@@ -2079,6 +2086,10 @@ public class CoreOptions implements Serializable {
     @Nullable
     public Duration historicalPartitionThreshold() {
         return options.get(HISTORICAL_PARTITION_THRESHOLD);
+    }
+
+    public int historicalPartitionL0Threshold() {
+        return options.get(HISTORICAL_PARTITION_L0_THRESHOLD);
     }
 
     public long fileIndexInManifestThreshold() {

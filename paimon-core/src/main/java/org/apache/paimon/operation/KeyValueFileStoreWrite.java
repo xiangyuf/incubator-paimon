@@ -18,6 +18,11 @@
 
 package org.apache.paimon.operation;
 
+import static org.apache.paimon.CoreOptions.ChangelogProducer.FULL_COMPACTION;
+import static org.apache.paimon.CoreOptions.MergeEngine.DEDUPLICATE;
+import static org.apache.paimon.lookup.LookupStoreFactory.bfGenerator;
+import static org.apache.paimon.mergetree.LookupFile.localFilePrefix;
+
 import org.apache.paimon.CoreOptions;
 import org.apache.paimon.CoreOptions.ChangelogProducer;
 import org.apache.paimon.CoreOptions.MergeEngine;
@@ -60,38 +65,33 @@ import org.apache.paimon.mergetree.compact.LookupMergeTreeCompactRewriter.Lookup
 import org.apache.paimon.mergetree.compact.MergeFunctionFactory;
 import org.apache.paimon.mergetree.compact.MergeTreeCompactManager;
 import org.apache.paimon.mergetree.compact.MergeTreeCompactRewriter;
-import org.apache.paimon.mergetree.compact.TimeAwarenessCompaction;
 import org.apache.paimon.mergetree.compact.UniversalCompaction;
 import org.apache.paimon.options.Options;
+import org.apache.paimon.partition.PartitionTimeExtractor;
 import org.apache.paimon.partition.PartitionValuesTimeExpireStrategy;
 import org.apache.paimon.schema.KeyValueFieldsExtractor;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.TableSchema;
+import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Cache;
 import org.apache.paimon.types.RowType;
 import org.apache.paimon.utils.CommitIncrement;
 import org.apache.paimon.utils.FieldsComparator;
 import org.apache.paimon.utils.FileStorePathFactory;
 import org.apache.paimon.utils.SnapshotManager;
 import org.apache.paimon.utils.UserDefinedSeqComparator;
-
-import org.apache.paimon.shade.caffeine2.com.github.benmanes.caffeine.cache.Cache;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-
 import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Supplier;
 
-import static org.apache.paimon.CoreOptions.ChangelogProducer.FULL_COMPACTION;
-import static org.apache.paimon.CoreOptions.MergeEngine.DEDUPLICATE;
-import static org.apache.paimon.lookup.LookupStoreFactory.bfGenerator;
-import static org.apache.paimon.mergetree.LookupFile.localFilePrefix;
+import javax.annotation.Nullable;
 
 /** {@link FileStoreWrite} for {@link KeyValueFileStore}. */
 public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
@@ -234,20 +234,7 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                 new ForceUpLevel0Compaction(universalCompaction);
 
         if (options.needLookup()) {
-            Duration historicalPartitionThreshold = options.historicalPartitionThreshold();
-            if (historicalPartitionThreshold != null) {
-                PartitionValuesTimeExpireStrategy partitionValuesTimeExpireStrategy =
-                        new PartitionValuesTimeExpireStrategy(options, partitionType);
-
-                return new TimeAwarenessCompaction(
-                        partition,
-                        historicalPartitionThreshold,
-                        forceUpLevel0Compaction,
-                        universalCompaction,
-                        partitionValuesTimeExpireStrategy);
-            } else {
-                return forceUpLevel0Compaction;
-            }
+            return forceUpLevel0Compaction;
         } else {
             return universalCompaction;
         }
@@ -273,6 +260,23 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                             userDefinedSeqComparator,
                             levels,
                             dvMaintainer);
+            LocalDateTime partitionDate = null;
+            if (options.needLookup()) {
+                Duration historicalPartitionThreshold = options.historicalPartitionThreshold();
+                if (historicalPartitionThreshold != null) {
+                    PartitionValuesTimeExpireStrategy partitionValuesTimeExpireStrategy =
+                            new PartitionValuesTimeExpireStrategy(options, partitionType);
+                    PartitionTimeExtractor partitionTimeExtractor =
+                            partitionValuesTimeExpireStrategy.getTimeExtractor();
+                    partitionDate =
+                            partitionTimeExtractor.extract(
+                                    partitionValuesTimeExpireStrategy.getPartitionKeys(),
+                                    Arrays.asList(
+                                            partitionValuesTimeExpireStrategy.convertPartition(
+                                                    partition)));
+                }
+            }
+
             return new MergeTreeCompactManager(
                     compactExecutor,
                     levels,
@@ -285,7 +289,10 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                             ? null
                             : compactionMetrics.createReporter(partition, bucket),
                     dvMaintainer,
-                    options.prepareCommitWaitCompaction());
+                    options.prepareCommitWaitCompaction(),
+                    options.historicalPartitionThreshold(),
+                    options.historicalPartitionL0Threshold(),
+                    partitionDate);
         }
     }
 
