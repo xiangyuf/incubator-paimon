@@ -54,4 +54,6 @@ public interface CompactManager extends Closeable {
 
     /** Check if a compaction is in progress, or if a compaction result remains to be fetched. */
     boolean isCompacting();
+
+    boolean needLateCompact();
 }

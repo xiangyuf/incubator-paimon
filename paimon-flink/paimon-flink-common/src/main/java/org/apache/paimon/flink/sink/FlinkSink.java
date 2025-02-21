@@ -158,6 +158,21 @@ public abstract class FlinkSink<T> implements Serializable {
             };
         }
 
+        if (coreOptions.needLookup() && coreOptions.historicalPartitionThreshold() != null) {
+            return (table, commitUser, state, ioManager, memoryPool, metricGroup) -> {
+                assertNoSinkMaterializer.run();
+                return new LateCompactSinkWrite(
+                        table,
+                        commitUser,
+                        state,
+                        ioManager,
+                        ignorePreviousFiles,
+                        waitCompaction,
+                        isStreaming,
+                        memoryPool,
+                        metricGroup);
+            };
+        }
         return (table, commitUser, state, ioManager, memoryPool, metricGroup) -> {
             assertNoSinkMaterializer.run();
             return new StoreSinkWriteImpl(

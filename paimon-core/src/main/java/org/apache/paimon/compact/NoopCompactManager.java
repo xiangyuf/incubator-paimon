@@ -76,5 +76,10 @@ public class NoopCompactManager implements CompactManager {
     }
 
     @Override
+    public boolean needLateCompact() {
+        return false;
+    }
+
+    @Override
     public void close() throws IOException {}
 }

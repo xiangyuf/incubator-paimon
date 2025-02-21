@@ -284,6 +284,11 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
     }
 
     @Override
+    public boolean needLateCompact() {
+        return compactManager.needLateCompact();
+    }
+
+    @Override
     public void sync() throws Exception {
         trySyncLatestCompaction(true);
     }
@@ -401,5 +406,9 @@ public class MergeTreeWriter implements RecordWriter<KeyValue>, MemoryOwner {
         if (compactDeletionFile != null) {
             compactDeletionFile.clean();
         }
+    }
+
+    public CompactManager getCompactManager() {
+        return compactManager;
     }
 }

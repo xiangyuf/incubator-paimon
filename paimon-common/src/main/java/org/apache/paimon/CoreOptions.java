@@ -1017,6 +1017,20 @@ public class CoreOptions implements Serializable {
                     .withFallbackKeys("orc.write.batch-size")
                     .withDescription("Write batch size for any file format if it supports.");
 
+    public static final ConfigOption<Duration> HISTORICAL_PARTITION_THRESHOLD =
+            key("historical-partition.threshold")
+                    .durationType()
+                    .noDefaultValue()
+                    .withDescription(
+                            "Consumer id for recording the offset of consumption in the storage.");
+
+    public static final ConfigOption<Integer> HISTORICAL_PARTITION_L0_THRESHOLD =
+            key("historical-partition-l0.threshold")
+                    .intType()
+                    .defaultValue(6)
+                    .withDescription(
+                            "Consumer id for recording the offset of consumption in the storage.");
+
     public static final ConfigOption<String> CONSUMER_ID =
             key("consumer-id")
                     .stringType()
@@ -2485,6 +2499,15 @@ public class CoreOptions implements Serializable {
 
     public FileIndexOptions indexColumnsOptions() {
         return new FileIndexOptions(this);
+    }
+
+    @Nullable
+    public Duration historicalPartitionThreshold() {
+        return options.get(HISTORICAL_PARTITION_THRESHOLD);
+    }
+
+    public int historicalPartitionL0Threshold() {
+        return options.get(HISTORICAL_PARTITION_L0_THRESHOLD);
     }
 
     public long fileIndexInManifestThreshold() {

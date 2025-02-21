@@ -18,6 +18,7 @@
 
 package org.apache.paimon.flink.source;
 
+import org.apache.paimon.CoreOptions;
 import org.apache.paimon.KeyValue;
 import org.apache.paimon.data.GenericRow;
 import org.apache.paimon.flink.source.FileStoreSourceReaderTest.DummyMetricGroup;
@@ -25,6 +26,10 @@ import org.apache.paimon.flink.source.metrics.FileStoreSourceReaderMetrics;
 import org.apache.paimon.fs.Path;
 import org.apache.paimon.fs.local.LocalFileIO;
 import org.apache.paimon.io.DataFileMeta;
+import org.apache.paimon.mergetree.MergeTreeWriter;
+import org.apache.paimon.mergetree.compact.CompactStrategy;
+import org.apache.paimon.mergetree.compact.MergeTreeCompactManager;
+import org.apache.paimon.mergetree.compact.TimeAwarenessCompaction;
 import org.apache.paimon.schema.Schema;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.table.source.TableRead;
@@ -43,14 +48,18 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.annotation.Nullable;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -156,6 +165,38 @@ public class FileStoreSourceSplitReaderTest {
         assertRecords(records, "id1", "id1", 0, null);
 
         reader.close();
+    }
+
+    @Test
+    @Disabled
+    public void testPrimaryKeyWithTimeAwarenessCompaction() throws Exception {
+        TestChangelogDataReadWrite rw = new TestChangelogDataReadWrite(tempDir.toString());
+        HashMap<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(CoreOptions.FILE_FORMAT.key(), "avro");
+        optionsMap.put(CoreOptions.HISTORICAL_PARTITION_THRESHOLD.key(), "3 d");
+        optionsMap.put(CoreOptions.PARTITION_TIMESTAMP_FORMATTER.key(), "yyyyMMdd");
+        optionsMap.put(CoreOptions.DELETION_VECTORS_ENABLED.key(), "true");
+
+        for (long i = 0L; i < 30L; i++) {
+            LocalDateTime testPartitionDate = LocalDateTime.now().minusDays(i);
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd");
+            MergeTreeWriter kvWriter =
+                    (MergeTreeWriter)
+                            rw.createMergeTreeWriterWithOptions(
+                                    row(Integer.parseInt(testPartitionDate.format(formatter))),
+                                    0,
+                                    optionsMap);
+            CompactStrategy compactStrategy =
+                    ((MergeTreeCompactManager) kvWriter.getCompactManager()).getStrategy();
+            assertThat(compactStrategy).isInstanceOf(TimeAwarenessCompaction.class);
+
+            TimeAwarenessCompaction compaction = (TimeAwarenessCompaction) compactStrategy;
+            if (i >= 3L) {
+                assertThat(compaction.isHistorical).isTrue();
+            } else {
+                assertThat(compaction.isHistorical).isFalse();
+            }
+        }
     }
 
     @Test

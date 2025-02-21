@@ -159,6 +159,23 @@ public class WriterOperatorTest {
     }
 
     @Test
+    public void testLateCompactSinkWrite() throws Exception {
+        RowType rowType =
+                RowType.of(
+                        new DataType[] {DataTypes.INT(), DataTypes.INT(), DataTypes.INT()},
+                        new String[] {"pt", "k", "v"});
+
+        Options options = new Options();
+        options.set("bucket", "1");
+        options.set("changelog-producer", "lookup");
+        options.set(CoreOptions.HISTORICAL_PARTITION_THRESHOLD.key(), "2 d");
+
+        FileStoreTable fileStoreTable =
+                createFileStoreTable(
+                        rowType, Arrays.asList("pt", "k"), Collections.singletonList("k"), options);
+    }
+
+    @Test
     public void testAsyncLookupWithFailure() throws Exception {
         RowType rowType =
                 RowType.of(

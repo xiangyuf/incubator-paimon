@@ -31,6 +31,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -177,6 +179,107 @@ public class MergeTreeCompactManagerTest {
                         new LevelMinMax(2, 1, 3),
                         new LevelMinMax(2, 4, 6)),
                 Collections.singletonList(new LevelMinMax(2, 1, 10)));
+    }
+
+    @Test
+    public void testHistoricalCompaction() throws ExecutionException, InterruptedException {
+        List<LevelMinMax> inputs =
+                Arrays.asList(
+                        new LevelMinMax(0, 1, 5),
+                        new LevelMinMax(0, 3, 6),
+                        new LevelMinMax(0, 6, 8),
+                        new LevelMinMax(1, 1, 4),
+                        new LevelMinMax(1, 6, 8),
+                        new LevelMinMax(1, 10, 10),
+                        new LevelMinMax(2, 1, 3),
+                        new LevelMinMax(2, 4, 6));
+        List<DataFileMeta> files1 = new ArrayList<>();
+        List<DataFileMeta> files2 = new ArrayList<>();
+        for (int i = 0; i < inputs.size(); i++) {
+            LevelMinMax minMax = inputs.get(i);
+            files1.add(minMax.toFile(i));
+            files2.add(minMax.toFile(i));
+        }
+
+        Levels levels1 = new Levels(comparator, files1, 3);
+        Levels levels2 = new Levels(comparator, files2, 3);
+
+        CompactStrategy strategy = new UniversalCompaction(0, 0, 5);
+
+        MergeTreeCompactManager oldManager =
+                new MergeTreeCompactManager(
+                        service,
+                        levels1,
+                        strategy,
+                        comparator,
+                        2,
+                        Integer.MAX_VALUE,
+                        new TestRewriter(true),
+                        null,
+                        null,
+                        false,
+                        Duration.ofDays(2),
+                        6,
+                        LocalDateTime.now().minusDays(2));
+
+        MergeTreeCompactManager newManager =
+                new MergeTreeCompactManager(
+                        service,
+                        levels2,
+                        strategy,
+                        comparator,
+                        2,
+                        Integer.MAX_VALUE,
+                        new TestRewriter(true),
+                        null,
+                        null,
+                        false,
+                        Duration.ofDays(2),
+                        6,
+                        LocalDateTime.now().minusDays(1));
+
+        assertThat(oldManager.shouldTriggerCompactForHistorical()).isFalse();
+        oldManager.triggerCompaction(false);
+        assertThat(oldManager.getCompactionResult(true)).isEmpty();
+
+        oldManager.triggerCompaction(false);
+        oldManager.triggerCompaction(false);
+        oldManager.triggerCompaction(false);
+        oldManager.triggerCompaction(false);
+
+        assertThat(oldManager.shouldTriggerCompactForHistorical()).isTrue();
+        oldManager.triggerCompaction(false);
+        assertThat(oldManager.getCompactionResult(true)).isPresent();
+
+        assertThat(newManager.shouldTriggerCompactForHistorical()).isFalse();
+        newManager.triggerCompaction(false);
+        assertThat(newManager.getCompactionResult(true)).isPresent();
+        newManager.triggerCompaction(false);
+        newManager.triggerCompaction(false);
+        newManager.triggerCompaction(false);
+        newManager.triggerCompaction(false);
+        newManager.triggerCompaction(false);
+        newManager.triggerCompaction(false);
+        assertThat(newManager.shouldTriggerCompactForHistorical()).isFalse();
+
+        oldManager.addNewFile((new LevelMinMax(0, 11, 12)).toFile(inputs.size()));
+        oldManager.addNewFile((new LevelMinMax(0, 13, 14)).toFile(inputs.size() + 1));
+        oldManager.addNewFile((new LevelMinMax(0, 15, 16)).toFile(inputs.size() + 2));
+        oldManager.addNewFile((new LevelMinMax(0, 17, 18)).toFile(inputs.size() + 3));
+        assertThat(oldManager.shouldTriggerCompactForHistorical()).isFalse();
+        oldManager.addNewFile((new LevelMinMax(0, 15, 16)).toFile(inputs.size() + 4));
+        oldManager.addNewFile((new LevelMinMax(0, 17, 18)).toFile(inputs.size() + 6));
+        assertThat(oldManager.shouldTriggerCompactForHistorical()).isTrue();
+        oldManager.triggerCompaction(false);
+        assertThat(oldManager.getCompactionResult(true)).isPresent();
+
+        oldManager.triggerCompaction(false);
+        assertThat(oldManager.shouldTriggerCompactForHistorical()).isFalse();
+        oldManager.triggerCompaction(false);
+        oldManager.triggerCompaction(false);
+        oldManager.triggerCompaction(false);
+        oldManager.triggerCompaction(false);
+        assertThat(oldManager.shouldTriggerCompactForHistorical()).isTrue();
     }
 
     private void innerTest(List<LevelMinMax> inputs, List<LevelMinMax> expected)

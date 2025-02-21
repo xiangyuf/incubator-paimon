@@ -62,6 +62,8 @@ import org.apache.paimon.mergetree.compact.MergeTreeCompactManager;
 import org.apache.paimon.mergetree.compact.MergeTreeCompactRewriter;
 import org.apache.paimon.mergetree.compact.UniversalCompaction;
 import org.apache.paimon.options.Options;
+import org.apache.paimon.partition.PartitionTimeExtractor;
+import org.apache.paimon.partition.PartitionValuesTimeExpireStrategy;
 import org.apache.paimon.schema.KeyValueFieldsExtractor;
 import org.apache.paimon.schema.SchemaManager;
 import org.apache.paimon.schema.TableSchema;
@@ -79,6 +81,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -196,16 +201,7 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                 writerFactoryBuilder.build(partition, bucket, options);
         Comparator<InternalRow> keyComparator = keyComparatorSupplier.get();
         Levels levels = new Levels(keyComparator, restoreFiles, options.numLevels());
-        UniversalCompaction universalCompaction =
-                new UniversalCompaction(
-                        options.maxSizeAmplificationPercent(),
-                        options.sortedRunSizeRatio(),
-                        options.numSortedRunCompactionTrigger(),
-                        options.optimizedCompactionInterval());
-        CompactStrategy compactStrategy =
-                options.needLookup()
-                        ? new ForceUpLevel0Compaction(universalCompaction)
-                        : universalCompaction;
+        CompactStrategy compactStrategy = createCompactStrategy(options, partition);
         CompactManager compactManager =
                 createCompactManager(
                         partition, bucket, compactStrategy, compactExecutor, levels, dvMaintainer);
@@ -232,6 +228,24 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
         return options.writeBufferSpillable(fileIO.isObjectStore(), isStreamingMode);
     }
 
+    @VisibleForTesting
+    public CompactStrategy createCompactStrategy(CoreOptions options, BinaryRow partition) {
+        UniversalCompaction universalCompaction =
+                new UniversalCompaction(
+                        options.maxSizeAmplificationPercent(),
+                        options.sortedRunSizeRatio(),
+                        options.numSortedRunCompactionTrigger(),
+                        options.optimizedCompactionInterval());
+        ForceUpLevel0Compaction forceUpLevel0Compaction =
+                new ForceUpLevel0Compaction(universalCompaction);
+
+        if (options.needLookup()) {
+            return forceUpLevel0Compaction;
+        } else {
+            return universalCompaction;
+        }
+    }
+
     private CompactManager createCompactManager(
             BinaryRow partition,
             int bucket,
@@ -252,6 +266,23 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                             userDefinedSeqComparator,
                             levels,
                             dvMaintainer);
+            LocalDateTime partitionDate = null;
+            if (options.needLookup()) {
+                Duration historicalPartitionThreshold = options.historicalPartitionThreshold();
+                if (historicalPartitionThreshold != null) {
+                    PartitionValuesTimeExpireStrategy partitionValuesTimeExpireStrategy =
+                            new PartitionValuesTimeExpireStrategy(options, partitionType);
+                    PartitionTimeExtractor partitionTimeExtractor =
+                            partitionValuesTimeExpireStrategy.getTimeExtractor();
+                    partitionDate =
+                            partitionTimeExtractor.extract(
+                                    partitionValuesTimeExpireStrategy.getPartitionKeys(),
+                                    Arrays.asList(
+                                            partitionValuesTimeExpireStrategy.convertPartition(
+                                                    partition)));
+                }
+            }
+
             return new MergeTreeCompactManager(
                     compactExecutor,
                     levels,
@@ -264,7 +295,10 @@ public class KeyValueFileStoreWrite extends MemoryFileStoreWrite<KeyValue> {
                             ? null
                             : compactionMetrics.createReporter(partition, bucket),
                     dvMaintainer,
-                    options.prepareCommitWaitCompaction());
+                    options.prepareCommitWaitCompaction(),
+                    options.historicalPartitionThreshold(),
+                    options.historicalPartitionL0Threshold(),
+                    partitionDate);
         }
     }
 
